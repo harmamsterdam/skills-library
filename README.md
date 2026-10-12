@@ -10,22 +10,30 @@ Fork it, edit one YAML file, drop your skills in, and push.
 
 ## What you get
 
-- **A browsable site** — hero, search, tag filters, one tile per item.
+- **A browsable site** — search, tag filters, one tile per item.
 - **Search** across name, description and tags, with shareable filter URLs.
 - **Per-agent install instructions** — a dropdown in the header switches every snippet on the
   site between Claude Code, Codex and Copilot. The choice is remembered.
 - **Downloadable `.skill` bundles** — each skill folder zipped, supporting files included.
-- **A Claude plugin marketplace entry**, so the whole library installs with one command.
+- **Claude and Codex plugin manifests**, so the whole library installs with one command in
+  either — the hero shows the right one for whichever agent is selected.
+- **Light and dark themes** — follows the viewer's system setting, with a header toggle that
+  overrides it and is remembered.
 - **Automatic deploys** to GitHub Pages on every push to `main`.
 
-Only skills and commands. No plugin browsing, no other content types.
+Only skills and commands. No plugin browsing or other content types YET.
 
 ## Setup
 
 1. Click **Use this template** → create your repository.
 2. In your new repo: **Settings ▸ Pages ▸ Build and deployment ▸ Source: GitHub Actions**.
-3. Edit [`config.yaml`](config.yaml) — realistically just `site.title` and `site.tagline`.
-4. Push. The workflow builds and deploys; your site appears at
+3. **If you forked instead of using the template**, GitHub disables Actions on forks. Open the
+   **Actions** tab, click **I understand my workflows, go ahead and enable them**, then run
+   **Deploy to GitHub Pages ▸ Run workflow** once by hand — a fork's first workflow run does
+   not start on its own. After that, pushes trigger it normally. Repositories created with
+   **Use this template** do not need this.
+4. Edit [`config.yaml`](config.yaml) — realistically just `site.title` and `site.tagline`.
+5. Push. The workflow builds and deploys; your site appears at
    `https://<you>.github.io/<repo>/`.
 
 Every value in `config.yaml` is optional. The repository owner, name, deploy URL and base
@@ -35,9 +43,9 @@ with nothing filled in. Set `site.author` only if you want a display name instea
 GitHub username, and `site.repo` only to point at a different repository than the one you are
 building in.
 
-The one thing that cannot be derived at render time is the committed plugin manifest, since
-Claude reads it from the repository. CI rewrites that for you on the first push — see
-[Generated plugin manifests](#generated-plugin-manifests).
+The one thing that cannot be derived at render time is the committed plugin manifests, since
+Claude and Codex read those from the repository. CI rewrites them for you on the first push —
+see [Generated plugin manifests](#generated-plugin-manifests).
 
 ## Adding a skill
 
@@ -112,14 +120,23 @@ to configure.
 
 ### Generated plugin manifests
 
-`.claude-plugin/marketplace.json` and `plugin.json` are generated from `config.yaml` — never
-edit them by hand, your changes will be overwritten. They are the one generated thing that has
-to be **committed**, because Claude reads them from your repository rather than from the built
-site, which is why a template ships them carrying someone else's name.
+Four manifests are generated from `config.yaml` — never edit them by hand, your changes will be
+overwritten:
 
-You do not have to do anything about that. The deploy workflow regenerates them on every push
-and commits them back if they changed, so **your fork re-attributes itself to you on its first
-push** — you will see a `Sync plugin manifests with config.yaml` commit from
+| File | Ecosystem |
+| ---- | --------- |
+| `.claude-plugin/plugin.json` | Claude plugin manifest |
+| `.claude-plugin/marketplace.json` | Claude marketplace, so `/plugin marketplace add <you>/<repo>` resolves |
+| `.codex-plugin/plugin.json` | Codex plugin manifest, pointing `skills` at `./skills/` |
+| `.agents/plugins/marketplace.json` | Codex marketplace, so `codex plugin marketplace add <you>/<repo>` resolves |
+
+They are the one generated thing that has to be **committed**, because both agents read them
+from your repository rather than from the built site — which is why a template ships them
+carrying someone else's name.
+
+You do not have to do anything about that. The deploy workflow regenerates all four on every
+push and commits them back if any changed, so **your fork re-attributes itself to you on its
+first push** — you will see a `Sync plugin manifests with config.yaml` commit from
 `github-actions[bot]` the first time CI runs. The same step keeps them in sync afterwards, so
 editing `config.yaml` is enough and you never need to remember to rebuild.
 
@@ -136,11 +153,27 @@ Two levels, depending on how far you want to go:
 - **Quick** — set `theme.accent`, `theme.accentDark`, `theme.font`, `theme.monoFont` and
   `theme.radius` in `config.yaml`. They are injected as CSS variables and override the defaults.
 - **Full** — edit [`src/styles/theme.css`](src/styles/theme.css). Every colour, radius, shadow
-  and width on the site is a custom property defined there, in both light and dark mode.
-  Components reference tokens only and never a literal colour, so changing a token changes the
-  whole site.
+  and width on the site is a custom property defined there. Components reference tokens only
+  and never a literal colour, so changing a token changes the whole site.
 
 Layout lives in [`src/styles/global.css`](src/styles/global.css) if you want to go further.
+
+### Light and dark
+
+Colours are written once, as `light-dark(light, dark)`:
+
+```css
+--bg: light-dark(#ffffff, #0e1014);
+```
+
+Which half applies comes from the `color-scheme` property, so there is no duplicated dark
+block to keep in sync — edit the pair and both themes follow. `light-dark()` needs a browser
+from 2024 or later; swap in a `prefers-color-scheme` block if you need to support older ones.
+
+The site follows the viewer's system setting by default. The header toggle overrides it with
+Light or Dark, stored in `localStorage` and applied by an inline script before the first
+paint, so there is no flash of the wrong theme. Choosing **System** clears the override.
+With JavaScript disabled the system setting still applies.
 
 ## Install targets
 
@@ -152,11 +185,16 @@ under `agents:` in `config.yaml` defines one:
   label: Claude Code
   skillDir: ~/.claude/skills
   commandPath: ~/.claude/commands/{name}.md
+  marketplace: /plugin marketplace add {slug}
   docs: https://code.claude.com/docs/en/skills
 ```
 
 Adding a fourth agent means adding a fourth entry — no code change. Available placeholders:
-`{name}`, `{owner}`, `{repo}`, `{branch}`, `{downloadUrl}`, `{skillDir}`.
+`{name}`, `{owner}`, `{repo}`, `{slug}`, `{branch}`, `{downloadUrl}`, `{skillDir}`.
+
+`marketplace` is the "install the whole library" command shown in the hero, and it follows the
+dropdown like everything else. Leave it out for an agent with no plugin ecosystem — Copilot
+ships without one — and the hero shows a short note pointing at the per-item installs instead.
 
 All three shipped agents read the same `SKILL.md` format; they differ only in where the files
 go. If a vendor moves a directory, fix it here and every snippet on the site follows.
@@ -186,7 +224,9 @@ src/styles/theme.css     Design tokens
 src/lib/repo.mjs         Works out which repository this is, for links and attribution
 src/lib/                 Config loading, install snippets, item normalisation
 scripts/build-assets.mjs Bundles .skill files, regenerates plugin manifests
-.claude-plugin/          Generated marketplace manifests (committed)
+.claude-plugin/          Generated Claude plugin + marketplace manifests (committed)
+.codex-plugin/           Generated Codex plugin manifest (committed)
+.agents/plugins/         Generated Codex marketplace manifest (committed)
 ```
 
 Built with [Astro](https://astro.build). No UI framework, no client-side data fetching —
